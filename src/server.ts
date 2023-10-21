@@ -54,6 +54,28 @@ interface ICategory extends Document {
     },
 }
 
+interface ISale extends Document {
+    _id: Schema.Types.ObjectId;
+    quantity: {
+        type: number,
+        required: true
+    },
+    customerEmail: {
+        type: String,
+        required: true
+    },
+    price: {
+        type: number,
+        required: true
+    },
+
+
+    product: IProduct['_id'];
+}
+
+
+
+
 // Modelo de product
 // Interfaz para el modelo de Producto
 interface IProduct extends Document {
@@ -89,9 +111,34 @@ const productSchema = new mongoose.Schema({
     category: {type: mongoose.Schema.Types.ObjectId, ref: 'Category'}, // Referencia a la categoría
 });
 
+const saleSchema = new mongoose.Schema({
+    quantity: {
+        type: Number,
+        required: true
+    },
+    customerEmail: {
+        type: String,
+        required: true
+    },
+    price: {
+        type: Number,
+        required: true
+    },
+    product: {type: mongoose.Schema.Types.ObjectId, ref: 'Product'}, // Referencia a la categoría
+});
+// Personaliza la transformación del documento JSON
+productSchema.set('toJSON', {
+    transform: function (doc, ret) {
+        ret.id = ret._id; // Agrega la propiedad 'id' con el valor de '_id'
+        delete ret._v; // Elimina '_v' si lo deseas
+        return ret;
+    },
+});
 const Product = mongoose.model<IProduct>('Product', productSchema);
 
 const Category = mongoose.model<ICategory>('Category', CategorySchema);
+
+const Sale = mongoose.model<ISale>('Sale', saleSchema);
 
 // Rutas para autenticación y generación de tokens JWT
 app.post('/login', (req: Request, res: Response) => {
@@ -201,7 +248,7 @@ app.post('/products', verifyToken, async (req: Request, res: Response) => {
 });
 
 // Ruta para listar productos
-app.get('/products', async (req, res) => {
+app.get('/products', async (req:Request, res: Response) => {
     try {
         const products = await Product.find().populate('category');
         res.status(200).json(products);
@@ -210,6 +257,57 @@ app.get('/products', async (req, res) => {
     }
 });
 
+app.get('/products/:id', verifyToken, async (req, res) => {
+    try {
+        const productCode = req.params.id;
+
+        // Realiza una búsqueda en la base de datos para obtener la categoría por su ID
+        const product = await Product.findById(productCode);
+
+        if (!product) {
+            return res.status(404).json({message: 'Producto no encontrada'});
+        }
+
+        res.json(product);
+    } catch (error) {
+        console.error('Error al obtener el producto  por Codigo', error);
+        res.status(500).json({message: 'Error interno del servidor'});
+    }
+});
+app.put('/products/:code', async (req: Request, res: Response)=>{
+    
+    try {
+        const productCode = req.params.code
+        const {name,code}=req.body
+        const product = await Product.findByIdAndUpdate(productCode,{name,code},{new:true})
+
+        res.json(product)
+    } catch (error) {
+        res.status(500).json({message: 'Error al actualizar el producto.'});
+    }
+})
+
+app.delete('/products/:code',async (req:Request, res: Response) =>{
+    const {code} =req.params
+    try {
+        await Product.findByIdAndDelete(code);
+        res.json({message: 'Producto eliminado con éxito.'});
+    } catch (error) {
+        res.status(500).json({message: 'Error al eliminar la producto.'});
+    }
+})
+
+app.post('/sales', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const {productId, customerEmail, quantity,  price} = req.body;
+        const product = new Sale({customerEmail, quantity,price, product: productId});
+
+        await product.save();
+        res.status(201).json(product);
+    } catch (error) {
+        res.status(500).json({message: 'Error al crear el producto.'});
+    }
+});
 
 app.listen(port, () => {
     console.log(`Servidor escuchando en el puerto ${port}`);
